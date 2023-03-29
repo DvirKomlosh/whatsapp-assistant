@@ -1,59 +1,61 @@
 import makeWASocket, {
-    DisconnectReason,
-    useMultiFileAuthState,
-} from "@adiwajshing/baileys";
-import type { Boom } from "@hapi/boom";
-import * as ora from "ora";
-import pino from "pino";
+  DisconnectReason,
+  useMultiFileAuthState,
+} from "@adiwajshing/baileys"
+import type { Boom } from "@hapi/boom"
+import { readdirSync } from "fs"
+import * as ora from "ora"
+import pino from "pino"
+import { run } from "./parser"
+import Message from "./utilities/message"
 
-const spinner = ora("Initializing").start();
+// Import all handlers
+for (const file of readdirSync(__dirname + "/handlers")) {
+  if (file.endsWith(".js")) {
+    require("./handlers/" + file)
+  }
+}
+
+const spinner = ora("Initializing").start()
 
 const connectToWhatsApp = async () => {
-    const { state, saveCreds } = await useMultiFileAuthState(
-        "auth_info_baileys"
-    );
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys")
 
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true,
-        logger: pino({ level: "warn" }),
-    });
+  const client = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+    logger: pino({ level: "warn" }),
+  })
 
-    sock.ev.on("creds.update", saveCreds);
+  client.ev.on("creds.update", saveCreds)
 
-    sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-        if (connection === "close") {
-            const shouldReconnect =
-                (lastDisconnect?.error as Boom)?.output?.statusCode !==
-                DisconnectReason.loggedOut;
+  client.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+    if (connection === "close") {
+      const shouldReconnect =
+        (lastDisconnect?.error as Boom)?.output?.statusCode !==
+        DisconnectReason.loggedOut
 
-            // reconnect if not logged out
-            if (shouldReconnect) {
-                connectToWhatsApp();
-            }
-        } else if (connection === "open") {
-            spinner.succeed("Bot connected");
-        }
-    });
+      // reconnect if not logged out
+      if (shouldReconnect) {
+        connectToWhatsApp()
+      }
+    } else if (connection === "open") {
+      spinner.succeed("Bot connected")
+    }
+  })
 
-    sock.ev.on("messages.upsert", async (message) => {
-        // message listener
-        if (
-            message.type === "notify" &&
-            message.messages[0]?.key.remoteJid === "972533320249@s.whatsapp.net"
-        ) {
-            await sock.sendMessage("972533320249@s.whatsapp.net", {
-                text: "ACK",
-            });
-        }
+  client.ev.on("messages.upsert", async (m) => {
+    const message = new Message(m)
 
-        // Outgoing messages
-        if (!message.messages[0]?.key.fromMe) {
-            console.log(JSON.stringify(message, null, 2));
-        } else {
-            // Don't print
-        }
-    });
-};
+    run(message, client)
 
-connectToWhatsApp();
+    // Outgoing messages
+    if (!m.messages[0]?.key.fromMe) {
+      //   console.log( JSON.stringify(m, null, 2))
+    } else {
+      // Don't print
+    }
+  })
+}
+
+connectToWhatsApp()

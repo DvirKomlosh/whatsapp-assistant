@@ -8,7 +8,7 @@
         "outDir": "dist",
         "removeComments": true,
         "target": "ES5",
-        "baseUrl": "./",
+        "baseUrl": "./src",
         "esModuleInterop": false,
         "allowSyntheticDefaultImports": true,
         "moduleResolution": "node",
